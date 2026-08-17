@@ -2,6 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const GalleryImage = require('../models/GalleryImage');
 const auth = require('../middleware/auth');
+const upload = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -16,22 +17,28 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post(
-  '/',
-  auth,
-  [body('imageUrl').notEmpty().withMessage('Image URL is required')],
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
-
-    try {
-      const image = await GalleryImage.create({ ...req.body, uploadedBy: req.admin.id });
-      res.status(201).json(image);
-    } catch (err) {
-      res.status(500).json({ message: 'Could not add image' });
+// POST /api/gallery — accepts an uploaded file (field name "image")
+router.post('/', auth, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Image file is required' });
     }
+
+    const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+
+    const image = await GalleryImage.create({
+      imageUrl,
+      caption: req.body.caption || '',
+      album: req.body.album || 'General',
+      uploadedBy: req.admin.id
+    });
+
+    res.status(201).json(image);
+  } catch (err) {
+    console.error('Gallery upload error:', err);
+    res.status(500).json({ message: 'Could not add image' });
   }
-);
+});
 
 router.delete('/:id', auth, async (req, res) => {
   try {
